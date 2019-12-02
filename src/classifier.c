@@ -27,7 +27,7 @@ float *get_regression_values(char **labels, int n)
     return v;
 }
 
-void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear, int dont_show, int mjpeg_port, int calc_topk)
+void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear, int dont_show, int mjpeg_port, int calc_topk, int show_imgs)
 {
     int i;
 
@@ -77,6 +77,7 @@ void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus,
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
+    args.c = net.c;
     args.threads = 32;
     args.hierarchy = net.hierarchy;
 
@@ -89,6 +90,10 @@ void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus,
     args.saturation = net.saturation;
     args.hue = net.hue;
     args.size = net.w > net.h ? net.w : net.h;
+
+    args.mixup = net.mixup;
+    if (dont_show && show_imgs) show_imgs = 2;
+    args.show_imgs = show_imgs;
 
     args.paths = paths;
     args.classes = classes;
@@ -801,11 +806,14 @@ void predict_classifier(char *datacfg, char *cfgfile, char *weightfile, char *fi
         printf("%d %d\n", r.w, r.h);
 
         float *X = r.data;
-        time=clock();
+
+        double time = get_time_point();
         float *predictions = network_predict(net, X);
+        printf("%s: Predicted in %lf milli-seconds.\n", input, ((double)get_time_point() - time) / 1000);
+
         if(net.hierarchy) hierarchy_predictions(predictions, net.outputs, net.hierarchy, 0);
         top_k(predictions, net.outputs, top, indexes);
-        printf("%s: Predicted in %f seconds.\n", input, sec(clock()-time));
+
         for(i = 0; i < top; ++i){
             int index = indexes[i];
             if(net.hierarchy) printf("%d, %s: %f, parent: %s \n",index, names[index], predictions[index], (net.hierarchy->parent[index] >= 0) ? names[net.hierarchy->parent[index]] : "Root");
@@ -1203,7 +1211,10 @@ void demo_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_ind
         image in_s = resize_image(in, net.w, net.h);
         show_image(in, "Classifier");
 
+        double time = get_time_point();
         float *predictions = network_predict(net, in_s.data);
+        double frame_time_ms = (get_time_point() - time)/1000;
+
         if(net.hierarchy) hierarchy_predictions(predictions, net.outputs, net.hierarchy, 1);
         top_predictions(net, top, indexes);
 
@@ -1211,7 +1222,7 @@ void demo_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_ind
         printf("\033[2J");
         printf("\033[1;1H");
 #endif
-        printf("\nFPS:%.0f\n",fps);
+        printf("\nFPS: %.2f \n", fps);
 
         for(i = 0; i < top; ++i){
             int index = indexes[i];
@@ -1223,10 +1234,12 @@ void demo_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_ind
 
         wait_key_cv(10);// cvWaitKey(10);
 
-        gettimeofday(&tval_after, NULL);
-        timersub(&tval_after, &tval_before, &tval_result);
-        float curr = 1000000.f/((long int)tval_result.tv_usec);
-        fps = .9*fps + .1*curr;
+        //gettimeofday(&tval_after, NULL);
+        //timersub(&tval_after, &tval_before, &tval_result);
+        //float curr = 1000000.f/((long int)tval_result.tv_usec);
+        float curr = 1000.f / frame_time_ms;
+        if (fps == 0) fps = curr;
+        else fps = .9*fps + .1*curr;
     }
 #endif
 }
@@ -1264,6 +1277,7 @@ void run_classifier(int argc, char **argv)
     }
 
     int dont_show = find_arg(argc, argv, "-dont_show");
+    int show_imgs = find_arg(argc, argv, "-show_imgs");
     int calc_topk = find_arg(argc, argv, "-topk");
     int cam_index = find_int_arg(argc, argv, "-c", 0);
     int top = find_int_arg(argc, argv, "-t", 0);
@@ -1276,7 +1290,7 @@ void run_classifier(int argc, char **argv)
     int layer = layer_s ? atoi(layer_s) : -1;
     if(0==strcmp(argv[2], "predict")) predict_classifier(data, cfg, weights, filename, top);
     else if(0==strcmp(argv[2], "try")) try_classifier(data, cfg, weights, filename, atoi(layer_s));
-    else if(0==strcmp(argv[2], "train")) train_classifier(data, cfg, weights, gpus, ngpus, clear, dont_show, mjpeg_port, calc_topk);
+    else if(0==strcmp(argv[2], "train")) train_classifier(data, cfg, weights, gpus, ngpus, clear, dont_show, mjpeg_port, calc_topk, show_imgs);
     else if(0==strcmp(argv[2], "demo")) demo_classifier(data, cfg, weights, cam_index, filename);
     else if(0==strcmp(argv[2], "gun")) gun_classifier(data, cfg, weights, cam_index, filename);
     else if(0==strcmp(argv[2], "threat")) threat_classifier(data, cfg, weights, cam_index, filename);
@@ -1287,4 +1301,6 @@ void run_classifier(int argc, char **argv)
     else if(0==strcmp(argv[2], "valid10")) validate_classifier_10(data, cfg, weights);
     else if(0==strcmp(argv[2], "validcrop")) validate_classifier_crop(data, cfg, weights);
     else if(0==strcmp(argv[2], "validfull")) validate_classifier_full(data, cfg, weights);
+
+    if (gpus && gpu_list && ngpus > 1) free(gpus);
 }
