@@ -1,4 +1,5 @@
 #include "scale_channels_layer.h"
+#include "utils.h"
 #include "dark_cuda.h"
 #include "blas.h"
 #include <stdio.h>
@@ -20,14 +21,15 @@ layer make_scale_channels_layer(int batch, int index, int w, int h, int c, int w
     l.out_w = w2;
     l.out_h = h2;
     l.out_c = c2;
-    assert(l.out_c == l.c);
+    if (!l.scale_wh) assert(l.out_c == l.c);
+    else assert(l.out_w == l.w && l.out_h == l.h);
 
     l.outputs = l.out_w*l.out_h*l.out_c;
     l.inputs = l.outputs;
     l.index = index;
 
-    l.delta = (float*)calloc(l.outputs * batch, sizeof(float));
-    l.output = (float*)calloc(l.outputs * batch, sizeof(float));
+    l.delta = (float*)xcalloc(l.outputs * batch, sizeof(float));
+    l.output = (float*)xcalloc(l.outputs * batch, sizeof(float));
 
     l.forward = forward_scale_channels_layer;
     l.backward = backward_scale_channels_layer;
@@ -48,8 +50,8 @@ void resize_scale_channels_layer(layer *l, network *net)
     l->out_h = first.out_h;
     l->outputs = l->out_w*l->out_h*l->out_c;
     l->inputs = l->outputs;
-    l->delta = (float*)realloc(l->delta, l->outputs * l->batch * sizeof(float));
-    l->output = (float*)realloc(l->output, l->outputs * l->batch * sizeof(float));
+    l->delta = (float*)xrealloc(l->delta, l->outputs * l->batch * sizeof(float));
+    l->output = (float*)xrealloc(l->output, l->outputs * l->batch * sizeof(float));
 
 #ifdef GPU
     cuda_free(l->output_gpu);
