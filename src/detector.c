@@ -157,6 +157,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.mosaic_bound = net.mosaic_bound;
     args.contrastive = net.contrastive;
     args.contrastive_jit_flip = net.contrastive_jit_flip;
+    args.contrastive_color = net.contrastive_color;
     if (dont_show && show_imgs) show_imgs = 2;
     args.show_imgs = show_imgs;
 
@@ -713,7 +714,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     int t;
 
     float thresh = .001;
-    float nms = .45;
+    float nms = .6;
 
     int nthreads = 4;
     if (m < 4) nthreads = m;
